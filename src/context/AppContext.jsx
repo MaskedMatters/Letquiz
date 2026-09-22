@@ -192,13 +192,15 @@ export function AppProvider({ children }) {
     const userObj = {
       id: sbUser.id,
       email: sbUser.email,
-      name: sbUser.user_metadata?.full_name || sbUser.email.split('@')[0],
-      username: sbUser.email.split('@')[0],
+      name: sbUser.user_metadata?.full_name || sbUser.email?.split('@')[0] || 'User',
+      username: sbUser.email?.split('@')[0] || 'user',
       avatar: avatarUrl,
       role: 'Student',
       streak: 1,
       cardsMastered: 0,
-      testsCompleted: 0
+      testsCompleted: 0,
+      identities: sbUser.identities || [],
+      provider: sbUser.app_metadata?.provider || 'email'
     };
 
     setCurrentUser(userObj);
@@ -781,12 +783,67 @@ export function AppProvider({ children }) {
     }
   };
 
+  const updateUserEmail = async (newEmail) => {
+    if (!isSupabaseConfigured || !supabase) return false;
+    const { error } = await supabase.auth.updateUser({ email: newEmail });
+    if (error) {
+      addToast(error.message, 'error');
+      return false;
+    }
+    addToast('Confirmation link sent to new email address! Please check your inbox.', 'info');
+    return true;
+  };
+
+  const updateUserPassword = async (newPassword) => {
+    if (!isSupabaseConfigured || !supabase) return false;
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) {
+      addToast(error.message, 'error');
+      return false;
+    }
+    addToast('Password updated successfully!', 'success');
+    return true;
+  };
+
+  const unlinkProvider = async (identity) => {
+    if (!isSupabaseConfigured || !supabase) return false;
+    const { error } = await supabase.auth.unlinkIdentity(identity);
+    if (error) {
+      addToast(error.message, 'error');
+      return false;
+    }
+    addToast(`Disconnected ${identity.provider} provider`, 'info');
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user) handleSupabaseUser(session.user);
+    return true;
+  };
+
+  const deleteAccount = async () => {
+    if (!currentUser) return false;
+    try {
+      if (isSupabaseConfigured && supabase) {
+        await supabase.from('profiles').delete().eq('id', currentUser.id);
+        await supabase.auth.signOut();
+      }
+      setCurrentUser(null);
+      addToast('Your account has been deleted.', 'info');
+      return true;
+    } catch (err) {
+      addToast('Failed to delete account. Please try again.', 'error');
+      return false;
+    }
+  };
+
   return (
     <AppContext.Provider
       value={{
         users,
         currentUser,
         updateUserBio,
+        updateUserEmail,
+        updateUserPassword,
+        unlinkProvider,
+        deleteAccount,
         loading,
         loginWithEmail,
         registerWithEmail,
