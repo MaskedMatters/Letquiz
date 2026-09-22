@@ -10,7 +10,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Sparkles,
-  CheckCircle2
+  CheckCircle2,
+  Shuffle
 } from 'lucide-react';
 
 export default function FlashcardStudyView() {
@@ -20,19 +21,26 @@ export default function FlashcardStudyView() {
 
   const deck = decks.find((d) => d.id === deckId);
   const [filterStarred, setFilterStarred] = useState(false);
+  const [isShuffled, setIsShuffled] = useState(false);
+  const [shuffledCards, setShuffledCards] = useState([]);
 
   const rawCards = deck?.cards || [];
-  const cards = filterStarred ? rawCards.filter((c) => c.starred) : rawCards;
+  const baseCards = filterStarred ? rawCards.filter((c) => c.starred) : rawCards;
+  const cards = isShuffled ? shuffledCards : baseCards;
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
+  const [slidePhase, setSlidePhase] = useState('active'); // 'active', 'exit-left', 'exit-right', 'enter-right', 'enter-left'
+  const [isAnimating, setIsAnimating] = useState(false);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.code === 'Space') {
         e.preventDefault();
-        setIsFlipped((prev) => !prev);
+        if (!isAnimating) {
+          setIsFlipped((prev) => !prev);
+        }
       } else if (e.code === 'ArrowRight') {
         handleNext();
       } else if (e.code === 'ArrowLeft') {
@@ -41,7 +49,7 @@ export default function FlashcardStudyView() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentIndex, cards.length, isFlipped]);
+  }, [currentIndex, cards.length, isFlipped, isAnimating]);
 
   if (!deck || cards.length === 0) {
     return (
@@ -67,19 +75,69 @@ export default function FlashcardStudyView() {
   const currentCard = cards[currentIndex] || cards[0];
 
   const handleNext = () => {
-    setIsFlipped(false);
-    if (currentIndex < cards.length - 1) {
-      setCurrentIndex((prev) => prev + 1);
-    } else {
+    if (isAnimating) return;
+    if (currentIndex >= cards.length - 1) {
       setIsCompleted(true);
       confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+      return;
+    }
+
+    setIsAnimating(true);
+
+    const performSlideOut = () => {
+      setSlidePhase('exit-left');
+      setTimeout(() => {
+        setCurrentIndex((prev) => prev + 1);
+        setIsFlipped(false);
+        setSlidePhase('enter-right');
+
+        requestAnimationFrame(() => {
+          setTimeout(() => {
+            setSlidePhase('active');
+            setTimeout(() => {
+              setIsAnimating(false);
+            }, 180);
+          }, 20);
+        });
+      }, 160);
+    };
+
+    if (isFlipped) {
+      setIsFlipped(false);
+      setTimeout(performSlideOut, 180);
+    } else {
+      performSlideOut();
     }
   };
 
   const handlePrev = () => {
-    setIsFlipped(false);
-    if (currentIndex > 0) {
-      setCurrentIndex((prev) => prev - 1);
+    if (isAnimating || currentIndex <= 0) return;
+
+    setIsAnimating(true);
+
+    const performSlideOut = () => {
+      setSlidePhase('exit-right');
+      setTimeout(() => {
+        setCurrentIndex((prev) => prev - 1);
+        setIsFlipped(false);
+        setSlidePhase('enter-left');
+
+        requestAnimationFrame(() => {
+          setTimeout(() => {
+            setSlidePhase('active');
+            setTimeout(() => {
+              setIsAnimating(false);
+            }, 180);
+          }, 20);
+        });
+      }, 160);
+    };
+
+    if (isFlipped) {
+      setIsFlipped(false);
+      setTimeout(performSlideOut, 180);
+    } else {
+      performSlideOut();
     }
   };
 
@@ -87,6 +145,33 @@ export default function FlashcardStudyView() {
     setCurrentIndex(0);
     setIsFlipped(false);
     setIsCompleted(false);
+    setSlidePhase('active');
+    setIsAnimating(false);
+  };
+
+  const shuffleArray = (arr) => {
+    const copy = [...arr];
+    for (let i = copy.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [copy[i], copy[j]] = [copy[j], copy[i]];
+    }
+    return copy;
+  };
+
+  const handleToggleShuffle = () => {
+    if (!isShuffled) {
+      setShuffledCards(shuffleArray(baseCards));
+      setIsShuffled(true);
+      addToast('Scrambled cards into random order!', 'info');
+    } else {
+      setIsShuffled(false);
+      addToast('Restored original card order', 'info');
+    }
+    setCurrentIndex(0);
+    setIsFlipped(false);
+    setIsCompleted(false);
+    setSlidePhase('active');
+    setIsAnimating(false);
   };
 
   const speakText = (e, text) => {
@@ -125,8 +210,22 @@ export default function FlashcardStudyView() {
 
         <div style={{ display: 'flex', gap: 8 }}>
           <button
+            onClick={handleToggleShuffle}
+            className={`btn ${isShuffled ? 'btn-primary' : 'btn-secondary'} btn-sm`}
+            style={isShuffled ? { background: '#7c3aed', borderColor: '#7c3aed' } : {}}
+          >
+            <Shuffle size={14} />
+            <span>{isShuffled ? 'Shuffled' : 'Shuffle'}</span>
+          </button>
+
+          <button
             onClick={() => {
-              setFilterStarred(!filterStarred);
+              const nextStarred = !filterStarred;
+              setFilterStarred(nextStarred);
+              if (isShuffled) {
+                const nextBase = nextStarred ? rawCards.filter((c) => c.starred) : rawCards;
+                setShuffledCards(shuffleArray(nextBase));
+              }
               setCurrentIndex(0);
               setIsFlipped(false);
             }}
@@ -191,6 +290,20 @@ export default function FlashcardStudyView() {
               <span>Review Again</span>
             </button>
 
+            <button
+              onClick={() => {
+                setShuffledCards(shuffleArray(baseCards));
+                setIsShuffled(true);
+                handleRestart();
+                addToast('Scrambled cards in random order!', 'info');
+              }}
+              className="btn btn-secondary"
+              style={{ color: '#7c3aed' }}
+            >
+              <Shuffle size={16} />
+              <span>Shuffle & Review</span>
+            </button>
+
             <Link
               to={testUrl}
               className="btn btn-accent-cyan"
@@ -204,62 +317,81 @@ export default function FlashcardStudyView() {
       ) : (
         <div>
           {/* 3D Interactive Flashcard */}
-          <div className="flashcard-wrapper" onClick={() => setIsFlipped(!isFlipped)}>
-            <div className={`flashcard-inner ${isFlipped ? 'is-flipped' : ''}`}>
-              {/* Front Side (Term) */}
-              <div className="flashcard-face">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#2563eb', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                    TERM
-                  </span>
-                  <div style={{ display: 'flex', gap: 8 }}>
+          <div className="flashcard-wrapper">
+            <div
+              className={`card-slide-container card-slide-${
+                slidePhase === 'exit-left'
+                  ? 'out-left'
+                  : slidePhase === 'exit-right'
+                  ? 'out-right'
+                  : slidePhase === 'enter-right'
+                  ? 'in-right'
+                  : slidePhase === 'enter-left'
+                  ? 'in-left'
+                  : 'active'
+              }`}
+            >
+              <div
+                className={`flashcard-inner ${isFlipped ? 'is-flipped' : ''}`}
+                onClick={() => {
+                  if (!isAnimating) setIsFlipped(!isFlipped);
+                }}
+              >
+                {/* Front Side (Term) */}
+                <div className="flashcard-face">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#2563eb', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      TERM
+                    </span>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        onClick={(e) => speakText(e, currentCard.term)}
+                        style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}
+                      >
+                        <Volume2 size={18} />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleStarCard(deck.id, currentCard.id);
+                        }}
+                        style={{ background: 'none', border: 'none', color: currentCard.starred ? '#d97706' : '#64748b', cursor: 'pointer' }}
+                      >
+                        <Star size={18} fill={currentCard.starred ? '#d97706' : 'none'} />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flashcard-content">
+                    {currentCard.term}
+                  </div>
+
+                  <div style={{ fontSize: '0.8rem', color: '#94a3b8', textAlign: 'center' }}>
+                    Click or press [Space] to flip card
+                  </div>
+                </div>
+
+                {/* Back Side (Definition) */}
+                <div className="flashcard-face flashcard-back">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0d9488', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      DEFINITION
+                    </span>
                     <button
-                      onClick={(e) => speakText(e, currentCard.term)}
+                      onClick={(e) => speakText(e, currentCard.definition)}
                       style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}
                     >
                       <Volume2 size={18} />
                     </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleStarCard(deck.id, currentCard.id);
-                      }}
-                      style={{ background: 'none', border: 'none', color: currentCard.starred ? '#d97706' : '#64748b', cursor: 'pointer' }}
-                    >
-                      <Star size={18} fill={currentCard.starred ? '#d97706' : 'none'} />
-                    </button>
                   </div>
-                </div>
 
-                <div className="flashcard-content">
-                  {currentCard.term}
-                </div>
+                  <div className="flashcard-content" style={{ fontSize: '1.25rem', fontWeight: 500 }}>
+                    {currentCard.definition}
+                  </div>
 
-                <div style={{ fontSize: '0.8rem', color: '#94a3b8', textAlign: 'center' }}>
-                  Click or press [Space] to flip card
-                </div>
-              </div>
-
-              {/* Back Side (Definition) */}
-              <div className="flashcard-face flashcard-back">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0d9488', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                    DEFINITION
-                  </span>
-                  <button
-                    onClick={(e) => speakText(e, currentCard.definition)}
-                    style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}
-                  >
-                    <Volume2 size={18} />
-                  </button>
-                </div>
-
-                <div className="flashcard-content" style={{ fontSize: '1.25rem', fontWeight: 500 }}>
-                  {currentCard.definition}
-                </div>
-
-                <div style={{ fontSize: '0.8rem', color: '#2563eb', textAlign: 'center' }}>
-                  Click or press [Space] to flip back
+                  <div style={{ fontSize: '0.8rem', color: '#2563eb', textAlign: 'center' }}>
+                    Click or press [Space] to flip back
+                  </div>
                 </div>
               </div>
             </div>

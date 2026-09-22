@@ -234,20 +234,60 @@ select.input-field {
   padding-right: 36px;
 }
 
-/* 3D Flashcard Perspective Container */
+/* 3D Flashcard Perspective Container & Slide Animations */
 .flashcard-wrapper {
   perspective: 1000px;
   width: 100%;
   max-width: 640px;
   height: 360px;
   margin: 0 auto;
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+}
+
+.card-slide-container {
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius-lg);
+  will-change: transform, opacity;
+}
+
+.card-slide-out-left {
+  transform: translateX(-120px);
+  opacity: 0;
+  transition: transform 0.16s cubic-bezier(0.4, 0, 1, 1), opacity 0.16s ease;
+}
+
+.card-slide-out-right {
+  transform: translateX(120px);
+  opacity: 0;
+  transition: transform 0.16s cubic-bezier(0.4, 0, 1, 1), opacity 0.16s ease;
+}
+
+.card-slide-in-right {
+  transform: translateX(120px);
+  opacity: 0;
+  transition: none !important;
+}
+
+.card-slide-in-left {
+  transform: translateX(-120px);
+  opacity: 0;
+  transition: none !important;
+}
+
+.card-slide-active {
+  transform: translateX(0);
+  opacity: 1;
+  transition: transform 0.18s cubic-bezier(0, 0, 0.2, 1), opacity 0.18s ease;
 }
 
 .flashcard-inner {
   position: relative;
   width: 100%;
   height: 100%;
-  transition: transform 0.5s ease;
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
   transform-style: preserve-3d;
   cursor: pointer;
   border-radius: var(--radius-lg);
